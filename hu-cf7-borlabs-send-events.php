@@ -17,8 +17,9 @@ if (!defined('ABSPATH')) exit;
  */
 add_action('admin_enqueue_scripts', function($hook) {
     // Styles nur auf der CF7-Editor-Seite laden
-    if (strpos($hook, 'contact-form-7') !== false) {
-        wp_enqueue_style('cp-tracking-admin-css', plugins_url('assets/admin-style.css', __FILE__));
+    if (strpos($hook, 'toplevel_page_wpcf7') !== false) {
+        wp_enqueue_style('cp-tracking-admin-css', plugins_url('assets/admin-styles.css', __FILE__));
+        wp_enqueue_script('cp-tracking-admin-js', plugins_url('assets/admin-script.js', __FILE__));
     }
 });
 
@@ -108,15 +109,7 @@ function cp_tracking_settings_callback($post) {
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const checkbox = document.getElementById('cp_tracking_active');
-        const details = document.getElementById('cp-tracking-details');
-        if (checkbox && details) {
-            checkbox.addEventListener('change', function() {
-                details.classList.toggle('hidden-tracking', !this.checked);
-            });
-        }
-    });
+        
     </script>
     <?php
 }
@@ -124,11 +117,12 @@ function cp_tracking_settings_callback($post) {
 /**
  * 4. Einstellungen speichern & Cache (Transient) leeren
  */
-add_action('wpcf7_after_save_contact_form', function($contact_form) {
+add_action('wpcf7_save_contact_form', function($contact_form) {
     if (!isset($_POST['cp_tracking_nonce']) || !wp_verify_nonce($_POST['cp_tracking_nonce'], 'cp_tracking_save_data')) return;
-    if (!current_user_can('wpcf7_edit_contact_form', $contact_form->id())) return;
-
+    
     $raw = $_POST['cp_tracking'] ?? [];
+    
+    do_action('qm/debug', $raw);
     $sanitized = [
         'active'       => isset($raw['active']) ? 1 : 0,
         'ga4_enabled'  => isset($raw['ga4_enabled']) ? 1 : 0,
