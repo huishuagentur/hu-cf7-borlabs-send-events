@@ -105,6 +105,20 @@ function cp_tracking_settings_callback($post) {
                     </div>
                 </div>
             </div>
+
+            <div class="cp-tracking-section">
+                <h3>Pinterest Pixel</h3>
+                <div class="cp-tracking-field">
+                    <label>Event-Art</label>
+                    <select name="cp_tracking[pinterest_event]">
+                        <option value="">Deaktiviert</option>
+                        <?php foreach(['lead', 'signup', 'contact', 'custom'] as $pev): ?>
+                            <option value="<?php echo esc_attr($pev); ?>" <?php selected($pev, $settings['pinterest_event'] ?? ''); ?>><?php echo esc_html(ucfirst($pev)); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <p class="cp-tracking-info"><small>Der Formularname wird als <em>value_name</em> übergeben.</small></p>
+            </div>
         </div>
     </div>
 
@@ -131,6 +145,7 @@ add_action('wpcf7_save_contact_form', function($contact_form) {
         'tiktok_event' => sanitize_text_field($raw['tiktok_event'] ?? ''),
         'matomo_cat'   => sanitize_text_field($raw['matomo_cat'] ?? ''),
         'matomo_act'   => sanitize_text_field($raw['matomo_act'] ?? ''),
+        'pinterest_event' => sanitize_text_field($raw['pinterest_event'] ?? ''),
     ];
 
     update_post_meta($contact_form->id(), '_cp_tracking_settings', $sanitized);
@@ -208,6 +223,14 @@ add_action('wp_footer', function() {
         // Matomo
         if (s.matomo_cat && s.matomo_act && isAllowed('matomo')) {
             if (typeof _paq !== 'undefined') _paq.push(['trackEvent', s.matomo_cat, s.matomo_act, title]);
+        }
+
+        if (s.pinterest_event && isAllowed('pinterest')) {
+            if (typeof pintrk === 'function') {
+                pintrk('track', s.pinterest_event, {
+                    value_name: title
+                });
+            }
         }
 
     }, false);
