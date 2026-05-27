@@ -2,7 +2,7 @@
 /**
  * Plugin Name: HU CF7 Borlabs Multi-Platform Event Tracker
  * Description: Hochperformantes Tracking (GA4, Ads, Meta, TikTok, Matomo) mit Borlabs 3 Integration und Transient-Caching.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: HUisHU. Digitale Kreativagentur GmbH
  * Author URI:  https://www.huishu-agentur.de
  * License:     MIT
@@ -162,11 +162,12 @@ function hu_cf7b_save_contact_form( $contact_form ) {
 add_action( 'wpcf7_save_contact_form', 'hu_cf7b_save_contact_form' );
 
 /**
- * 5. Frontend-Ausgabe der Tracking-Skripte.
+ * 5. Frontend-Ausgabe der Tracking-Skripte (Optimiert mit Try-Catch und sicherem API-Check).
  */
 function hu_cf7b_render_frontend_scripts() {
     $form_configs = get_transient( 'hu_cf7b_active_configs' );
 
+    // Generierung des Caches (wie im vorherigen Code)
     if ( false === $form_configs ) {
         $all_forms = get_posts( [ 'post_type' => 'wpcf7_contact_form', 'numberposts' => -1 ] );
         $form_configs = [];
@@ -187,51 +188,106 @@ function hu_cf7b_render_frontend_scripts() {
     }
     ?>
     <script>
-    document.addEventListener('wpcf7mailsent', function(event) {
-        // Sichere Übergabe der PHP-Variablen an JavaScript
-        const configs = <?php echo wp_json_encode( $form_configs ); ?>;
-        const currentForm = configs[event.detail.contactFormId];
+        document.addEventListener('wpcf7mailsent', function(event) {
+            const configs = <?php echo wp_json_encode( $form_configs ); ?>;
+            const currentForm = configs[event.detail.contactFormId];
 
-        if (!currentForm || !currentForm.settings) return;
-
-        const s = currentForm.settings;
-        const title = currentForm.title;
-
-        // Borlabs 3 API Consent Check
-        const isAllowed = (serviceId) => {
-            if (typeof window.BorlabsCookie === 'undefined' || typeof window.BorlabsCookie.Consents === 'undefined') {
-                return true;
+            if (!currentForm || !currentForm.settings) {
+                return;
             }
-            return window.BorlabsCookie.Consents.hasConsent(serviceId);
-        };
 
-        // Tracking Events
-        if (s.ga4_enabled && isAllowed('google-analytics')) {
-            if (typeof gtag === 'function') gtag('event', 'generate_lead', { 'lead_source': title });
-        }
+            const settings = currentForm.settings;
+            const formTitle = currentForm.title;
 
-        if (s.ads_id && isAllowed('google-ads')) {
-            if (typeof gtag === 'function') gtag('event', 'conversion', { 'send_to': s.ads_id });
-        }
+            /**
+             * Safely checks if consent is granted via Borlabs Cookie 3.
+             * * @param {string} serviceId - The ID of the service (e.g., 'google-analytics').
+             * @returns {boolean} True if consent is given or Borlabs is inactive.
+             */
+            const hasConsent = (serviceId) => {
+                if (typeof window.BorlabsCookie === 'undefined' || typeof window.BorlabsCookie.Consents === 'undefined') {
+                    return true;
+                }
+                try {
+                    return window.BorlabsCookie.Consents.hasConsent(serviceId);
+                } catch (error) {
+                    console.warn('HUisHU Tracker: Borlabs API error.', error);
+                    return false; // Sicherheits-Fallback: Ohne klaren Consent kein Tracking
+                }
+            };
 
-        if (s.meta_event && isAllowed('meta-pixel')) {
-            if (typeof fbq === 'function') fbq('track', s.meta_event, { content_name: title });
-        }
+            /**
+             * Safely executes tracking callbacks to prevent JavaScript execution halts (e.g., by AdBlockers).
+             * * @param {string} serviceId - The required consent service ID.
+             * @param {Function} callback - The tracking logic to execute.
+             */
+            const executeTracking = (serviceId, callback) => {
+                if (hasConsent(serviceId)) {
+                    try {
+                        callback();
+                    } catch (error) {
+                        console.warn(`HUisHU Tracker: Tracking execution failed for ${serviceId}.`, error);
+                    }
+                }
+            };
 
-        if (s.tiktok_event && isAllowed('tiktok-pixel')) {
-            if (typeof ttq === 'object') ttq.track(s.tiktok_event, { description: title });
-        }
+            // --- TRACKING EXECUTION ---
 
-        if (s.matomo_cat && s.matomo_act && isAllowed('matomo')) {
-            if (typeof _paq !== 'undefined') _paq.push(['trackEvent', s.matomo_cat, s.matomo_act, title]);
-        }
-
-        if (s.pinterest_event && isAllowed('pinterest')) {
-            if (typeof pintrk === 'function') {
-                pintrk('track', s.pinterest_event, { value_name: title });
+            // Google Analytics 4
+            if (settings.ga4_enabled) {
+                executeTracking('google-analytics', () => {
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'generate_lead', { 'lead_source': formTitle });
+                    }
+                });
             }
-        }
-    }, false);
+
+            // Google Ads
+            if (settings.ads_id) {
+                executeTracking('google-ads', () => {
+                    if (typeof gtag === 'function') {
+                        gtag('event', 'conversion', { 'send_to': settings.ads_id });
+                    }
+                });
+            }
+
+            // Meta (Facebook) Pixel
+            if (settings.meta_event) {
+                executeTracking('meta-pixel', () => {
+                    if (typeof fbq === 'function') {
+                        fbq('track', settings.meta_event, { content_name: formTitle });
+                    }
+                });
+            }
+
+            // TikTok Pixel
+            if (settings.tiktok_event) {
+                executeTracking('tiktok-pixel', () => {
+                    if (typeof ttq === 'object' && typeof ttq.track === 'function') {
+                        ttq.track(settings.tiktok_event, { description: formTitle });
+                    }
+                });
+            }
+
+            // Matomo
+            if (settings.matomo_cat && settings.matomo_act) {
+                executeTracking('matomo', () => {
+                    if (typeof _paq !== 'undefined') {
+                        _paq.push(['trackEvent', settings.matomo_cat, settings.matomo_act, formTitle]);
+                    }
+                });
+            }
+
+            // Pinterest Pixel
+            if (settings.pinterest_event) {
+                executeTracking('pinterest', () => {
+                    if (typeof pintrk === 'function') {
+                        pintrk('track', settings.pinterest_event, { value_name: formTitle });
+                    }
+                });
+            }
+
+        }, false);
     </script>
     <?php
 }
