@@ -269,15 +269,6 @@ function hu_cf7b_render_frontend_scripts() {
                 });
             }
 
-            // Matomo
-            if (settings.matomo_cat && settings.matomo_act) {
-                executeTracking('matomo', () => {
-                    if (typeof _paq !== 'undefined') {
-                        _paq.push(['trackEvent', settings.matomo_cat, settings.matomo_act, formTitle]);
-                    }
-                });
-            }
-
             // Pinterest Pixel
             if (settings.pinterest_event) {
                 executeTracking('pinterest', () => {
@@ -285,6 +276,17 @@ function hu_cf7b_render_frontend_scripts() {
                         pintrk('track', settings.pinterest_event, { value_name: formTitle });
                     }
                 });
+            }
+
+            // Matomo (Cookieless - Consent-Check übersprungen)
+            if (settings.matomo_cat && settings.matomo_act) {
+                try {
+                    if (typeof _paq !== 'undefined') {
+                        _paq.push(['trackEvent', settings.matomo_cat, settings.matomo_act, formTitle]);
+                    }
+                } catch (error) {
+                    console.warn('HUisHU Tracker: Matomo execution failed.', error);
+                }
             }
 
         }, false);
